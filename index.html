@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>M&amp;N Foods</title>
+  <meta name="description" content="Onze restaurants: waar we al waren, wat we ervan vonden en waar we nog naartoe willen.">
+  <meta name="theme-color" content="#1B1A18">
+  <meta name="color-scheme" content="light">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="M&amp;N Foods">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="preload" href="fonts/plex-mono-regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/plex-mono-medium.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="vendor/leaflet-1.9.4.css">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="vendor/leaflet-1.9.4.js" defer></script>
+  <script src="vendor/supabase-2.118.0.js" defer></script>
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="masthead">
+      <div class="masthead__top">
+        <div class="brand" aria-label="M&amp;N Foods">
+          <span class="brand__mark" aria-hidden="true">M&amp;N</span>
+          <span class="brand__word" aria-hidden="true">M&amp;N FOODS</span>
+        </div>
+        <button class="icon-btn icon-btn--on-ink masthead__stats" id="btn-stats" type="button" aria-label="Statistieken"></button>
+      </div>
+      <nav class="cities" id="cities" aria-label="Stad"></nav>
+    </header>
+
+    <main class="main" id="main">
+      <section class="cats" aria-label="Waar heb je zin in?">
+        <div class="cats__track" id="cats"></div>
+      </section>
+
+      <div class="statusbar" id="statusbar" role="group" aria-label="Waar we al waren"></div>
+
+      <div class="toolbar">
+        <label class="search">
+          <span class="search__icon" id="search-icon"></span>
+          <input id="search" type="search" placeholder="Zoek" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Zoek op naam">
+        </label>
+        <button class="tool-btn" id="btn-filters" type="button"><span class="tool-btn__icon" data-icon="sliders"></span>Filters<span class="tool-btn__count" id="filter-count" hidden></span></button>
+        <button class="tool-btn" id="btn-surprise" type="button"><span class="tool-btn__icon" data-icon="dice"></span>Verras me</button>
+      </div>
+
+      <section class="mapcard" id="mapcard" aria-label="Kaart">
+        <div class="mapcard__map" id="map"></div>
+        <div class="mapcard__controls">
+          <button class="icon-btn icon-btn--float" id="btn-map-full" type="button" aria-label="Kaart groot openen"></button>
+          <button class="icon-btn icon-btn--float" id="btn-locate" type="button" aria-label="Toon mijn locatie"></button>
+        </div>
+        <button class="icon-btn icon-btn--float mapcard__close" id="btn-map-close" type="button" aria-label="Kaart sluiten"></button>
+        <p class="mapcard__count" id="map-count" aria-live="polite"></p>
+        <div class="mapcard__preview" id="map-preview" hidden></div>
+      </section>
+
+      <ul class="legend" id="legend" aria-label="Legende">
+        <li><span class="pin pin--nog_niet"></span>Nog niet</li>
+        <li><span class="pin pin--noah"></span>Noah</li>
+        <li><span class="pin pin--marie"></span>Marie</li>
+        <li><span class="pin pin--samen"></span>Samen</li>
+      </ul>
+
+      <div class="listhead">
+        <p class="listhead__count" id="result-count"></p>
+        <label class="sort">
+          <span>Sorteer op</span>
+          <select id="sort" aria-label="Sorteer de lijst"></select>
+        </label>
+      </div>
+
+      <ul class="list" id="list" aria-label="Restaurants"></ul>
+      <div class="empty" id="empty" hidden></div>
+    </main>
+
+    <div class="bottombar">
+      <button class="bottombar__btn" id="btn-add" type="button"><span class="bottombar__icon" data-icon="plus"></span>Restaurant toevoegen</button>
+    </div>
+  </div>
+
+  <section class="page page--detail" id="detail" hidden role="dialog" aria-modal="true" aria-label="Restaurant"></section>
+  <section class="page page--stats" id="stats" hidden role="dialog" aria-modal="true" aria-label="Statistieken"></section>
+  <div id="sheet-root"></div>
+  <div class="banner" id="banner" role="status" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript><p class="noscript">M&amp;N Foods heeft JavaScript nodig.</p></noscript>
+</body>
+</html>
