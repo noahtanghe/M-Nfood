@@ -1,7 +1,7 @@
 // Service worker: de app opent ook zonder bereik, en nieuwe versies komen binnen zodra je online bent.
 // Verhoog VERSION bij elke release zodat oude bestanden opgeruimd worden.
 
-const VERSION = '2026-10-23.1';
+const VERSION = '2026-10-23.2';
 const CACHE = `mn-shell-${VERSION}`;
 
 const CODE = [

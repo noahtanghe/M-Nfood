@@ -6,7 +6,7 @@ import { esc, isCoarsePointer } from './util.js';
 const L = window.L;
 
 function tiles() {
-  return L.tileLayer(TILE_URL, { subdomains: 'abcd', maxZoom: 19, attribution: TILE_ATTRIBUTION, detectRetina: true });
+  return L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTRIBUTION });
 }
 
 // Het zichtbare bolletje is klein; de tikzone eromheen is 30 px zodat je het op een gsm goed raakt.

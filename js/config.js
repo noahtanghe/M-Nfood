@@ -35,6 +35,7 @@ export const SORTS = [
   { id: 'prijs', label: 'Prijs' },
 ];
 
-export const TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// Standaardtegels van OpenStreetMap (geen sleutel nodig). De warme, gedempte kleur komt uit css/app.css.
+export const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 export const TILE_ATTRIBUTION =
-  '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+  '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';

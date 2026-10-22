@@ -236,7 +236,7 @@ img { display: block; max-width: 100%; }
 .mapcard.is-full .mapcard__preview { left: 12px; right: 12px; bottom: calc(var(--safe-bottom) + 28px); }
 
 .leaflet-container { background: var(--sand); font-family: var(--font); }
-.leaflet-tile-pane { filter: sepia(0.2) saturate(0.82) brightness(1.01); }
+.leaflet-tile-pane { filter: grayscale(0.88) sepia(0.2) brightness(1.04) contrast(0.9); }
 .leaflet-control-attribution { font-size: 9.5px; line-height: 1.5; color: var(--stone); background: rgba(252, 251, 248, 0.85) !important; padding: 0 5px; }
 .leaflet-control-attribution a { color: var(--stone); }
 .leaflet-bar { border: 1px solid var(--rule-strong) !important; box-shadow: none !important; border-radius: 0 !important; }
