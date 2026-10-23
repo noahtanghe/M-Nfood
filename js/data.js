@@ -145,7 +145,9 @@ async function placesCall(body) {
     err.status = res.status;
     throw err;
   }
-  return data.results || [];
+  // De voorbeeldcode van Supabase antwoordt met { message: "Hello …" }: dan is onze code nog niet gedeployed.
+  if (!Array.isArray(data.results)) throw new Error('de zoekfunctie in Supabase bevat nog niet de juiste code');
+  return data.results;
 }
 
 export const searchPlaces = (query, city) => placesCall({ action: 'search', query, city });

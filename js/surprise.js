@@ -3,7 +3,7 @@
 import { esc, priceHtml, prefersReducedMotion, toast } from './util.js';
 import { icon } from './icons.js';
 import { openOverlay } from './sheets.js';
-import { kindLabel } from './ui.js';
+import { kindLabel, mediaHtml } from './ui.js';
 
 const pickFrom = (arr, avoid) => {
   if (arr.length === 1) return arr[0];
@@ -28,14 +28,17 @@ export function openSurprise({ list, onOpen }) {
     'surprise',
     `<div class="surprise__backdrop" data-close></div>
      <div class="surprise__card" role="dialog" aria-modal="true" aria-labelledby="surprise-name">
-       <button type="button" class="icon-btn surprise__x" data-close aria-label="Sluiten">${icon('close')}</button>
-       <p class="surprise__lead">Wat dacht je van</p>
-       <p class="surprise__name" id="surprise-name" aria-live="polite" data-name></p>
-       <p class="surprise__meta" data-meta></p>
-       <p class="surprise__note">${esc(note)}</p>
-       <div class="surprise__actions">
-         <button type="button" class="btn btn--ghost" data-again>${icon('dice')}Nog eens</button>
-         <button type="button" class="btn btn--ink" data-open>Bekijk</button>
+       <div class="surprise__media" data-media></div>
+       <button type="button" class="icon-btn icon-btn--float surprise__x" data-close aria-label="Sluiten">${icon('close')}</button>
+       <div class="surprise__body">
+         <p class="surprise__lead">Wat dacht je van</p>
+         <p class="surprise__name" id="surprise-name" aria-live="polite" data-name></p>
+         <p class="surprise__meta" data-meta></p>
+         <p class="surprise__note">${esc(note)}</p>
+         <div class="surprise__actions">
+           <button type="button" class="btn btn--ghost" data-again>${icon('dice')}Nog eens</button>
+           <button type="button" class="btn btn--ink" data-open>Bekijk</button>
+         </div>
        </div>
      </div>`,
   );
@@ -44,10 +47,13 @@ export function openSurprise({ list, onOpen }) {
   let timer = null;
   const nameEl = ov.el.querySelector('[data-name]');
   const metaEl = ov.el.querySelector('[data-meta]');
+  const mediaEl = ov.el.querySelector('[data-media]');
 
   const show = (r, final) => {
     nameEl.textContent = r.name;
     nameEl.classList.toggle('is-final', final);
+    // tijdens het rollen enkel de kleurvlakken, zodat niet elke voorbijflitsende zaak een foto ophaalt
+    mediaEl.innerHTML = mediaHtml(r, { photo: final, eager: final });
     metaEl.innerHTML = final ? `<span>${esc(kindLabel(r))}</span>${priceHtml(r.price_level)}${r.address ? `<span>${esc(r.address.replace(/,\s*\d{4}.*$/, ''))}</span>` : ''}` : '';
   };
 

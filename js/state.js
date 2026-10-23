@@ -6,15 +6,20 @@ import { isOpenNow } from './hours.js';
 
 const prefs = loadLocal('mn.prefs', {}) || {};
 
+// Oudere versies bewaarden meerdere categorieën en zes statussen; die zetten we hier om.
+const legacyWho = ['samen', 'noah', 'marie'].includes(prefs.status) ? prefs.status : '';
+const firstCat = Array.isArray(prefs.cats) ? prefs.cats[0] || '' : '';
+
 export const state = {
   city: CITIES.some((c) => c.id === prefs.city) ? prefs.city : 'gent',
-  cats: new Set(Array.isArray(prefs.cats) ? prefs.cats : []),
-  status: prefs.status || 'alle',
-  search: '',
+  cat: typeof prefs.cat === 'string' ? prefs.cat : firstCat,
+  status: ['alle', 'nog_niet', 'geweest'].includes(prefs.status) ? prefs.status : legacyWho ? 'geweest' : 'alle',
+  who: typeof prefs.who === 'string' ? prefs.who : legacyWho,
   prices: new Set(Array.isArray(prefs.prices) ? prefs.prices : []),
   minScore: Number(prefs.minScore) || 0,
   openNow: !!prefs.openNow,
   sort: prefs.sort || 'naam',
+  view: prefs.view === 'map' ? 'map' : 'list',
   restaurants: [],
   categories: [],
   loaded: false,
@@ -27,12 +32,14 @@ export const state = {
 export function savePrefs() {
   saveLocal('mn.prefs', {
     city: state.city,
-    cats: [...state.cats],
+    cat: state.cat,
     status: state.status,
+    who: state.who,
     prices: [...state.prices],
     minScore: state.minScore,
     openNow: state.openNow,
     sort: state.sort,
+    view: state.view,
   });
 }
 
@@ -41,24 +48,19 @@ export const currentCity = () => cityById(state.city);
 export const byId = (id) => state.restaurants.find((r) => r.id === id) || null;
 export const cityRestaurants = (city = state.city) => state.restaurants.filter((r) => r.city_id === city);
 
-export function matchesStatus(r, status) {
+const matchesWho = (r) => !state.who || r.status === state.who;
+
+export function matchesStatus(r, status = state.status) {
   switch (status) {
     case 'nog_niet': return r.status === 'nog_niet';
-    case 'geweest': return r.status !== 'nog_niet';
-    case 'samen': return r.status === 'samen';
-    case 'noah': return r.status === 'noah';
-    case 'marie': return r.status === 'marie';
-    default: return true;
+    case 'geweest': return r.status !== 'nog_niet' && matchesWho(r);
+    default: return !state.who || matchesWho(r);
   }
 }
 
 /** Alle filters behalve de status (zodat de statusknoppen hun aantallen kunnen tonen). */
 function passesBase(r, now) {
-  if (state.cats.size && !r.categories.some((c) => state.cats.has(c))) return false;
-  if (state.search) {
-    const q = norm(state.search);
-    if (!norm(r.name).includes(q) && !norm(r.cuisine_note).includes(q) && !norm(r.address).includes(q)) return false;
-  }
+  if (state.cat && !r.categories.includes(state.cat)) return false;
   if (state.prices.size && !state.prices.has(Number(r.price_level))) return false;
   if (state.minScore && !(Number(r.avg_score) >= state.minScore)) return false;
   if (state.openNow && isOpenNow(r.opening_hours, now) !== true) return false;
@@ -72,15 +74,17 @@ export function baseFiltered() {
 
 export function statusCounts() {
   const base = baseFiltered();
-  const counts = {};
-  for (const s of ['alle', 'nog_niet', 'geweest', 'samen', 'noah', 'marie']) counts[s] = base.filter((r) => matchesStatus(r, s)).length;
-  return counts;
+  return {
+    alle: base.filter((r) => matchesStatus(r, 'alle')).length,
+    nog_niet: base.filter((r) => matchesStatus(r, 'nog_niet')).length,
+    geweest: base.filter((r) => matchesStatus(r, 'geweest')).length,
+  };
 }
 
 export const distanceTo = (r) => (state.userPos ? distanceKm(state.userPos, r) : null);
 
 const collator = new Intl.Collator('nl', { sensitivity: 'base', numeric: true });
-const byName = (a, b) => collator.compare(a.name, b.name);
+export const byName = (a, b) => collator.compare(a.name, b.name);
 
 export function sortList(list) {
   const out = [...list];
@@ -102,19 +106,30 @@ export function sortList(list) {
 }
 
 export function filtered() {
-  return sortList(baseFiltered().filter((r) => matchesStatus(r, state.status)));
+  return sortList(baseFiltered().filter((r) => matchesStatus(r)));
+}
+
+/** Zoeken over alle zaken van de stad, los van de filters. */
+export function searchCity(query) {
+  const q = norm(query);
+  const list = cityRestaurants();
+  if (!q) return [...list].sort(byName);
+  const hay = (r) => norm([r.name, r.cuisine_note, r.address, ...r.categories].filter(Boolean).join(' '));
+  const starts = (r) => (norm(r.name).startsWith(q) ? 0 : 1);
+  return list.filter((r) => hay(r).includes(q)).sort((a, b) => starts(a) - starts(b) || byName(a, b));
 }
 
 export function activeFilterCount() {
-  return (state.prices.size ? 1 : 0) + (state.minScore ? 1 : 0) + (state.openNow ? 1 : 0);
+  return (state.who ? 1 : 0) + (state.prices.size ? 1 : 0) + (state.minScore ? 1 : 0) + (state.openNow ? 1 : 0);
 }
 
 /** Sleutel die verandert wanneer de selectie verandert (om de kaart opnieuw te kaderen). */
 export function filterKey() {
-  return JSON.stringify([state.city, [...state.cats].sort(), state.status, norm(state.search), [...state.prices].sort(), state.minScore, state.openNow]);
+  return JSON.stringify([state.city, state.cat, state.status, state.who, [...state.prices].sort(), state.minScore, state.openNow]);
 }
 
 export function clearFilters() {
+  state.who = '';
   state.prices.clear();
   state.minScore = 0;
   state.openNow = false;

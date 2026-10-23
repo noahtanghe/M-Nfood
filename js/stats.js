@@ -2,9 +2,9 @@
 
 import { state, cityRestaurants, currentCity } from './state.js';
 import { esc, formatScore, formatDate } from './util.js';
-import { icon, categoryIcon } from './icons.js';
+import { icon, categoryIcon, categoryHue } from './icons.js';
 import { lockScroll, unlockScroll } from './sheets.js';
-import { stampsSmall, kindLabel } from './ui.js';
+import { stamps, kindLabel, mediaHtml } from './ui.js';
 
 const page = () => document.getElementById('stats');
 let nav = { close: () => {}, openRestaurant: () => {} };
@@ -46,6 +46,7 @@ export const refreshStats = () => isOpen && render();
 const pct = (n, total) => (total ? (n / total) * 100 : 0);
 const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 const zaken = (n) => (n === 1 ? '1 zaak' : `${n} zaken`);
+const round1 = (n) => formatScore(Math.round(n * 10) / 10);
 
 function render() {
   const city = currentCity();
@@ -57,10 +58,11 @@ function render() {
   const noah = count('noah');
   const marie = count('marie');
   const niet = count('nog_niet');
+  const been = total - niet;
 
   const head = `
     <header class="statshead">
-      <button type="button" class="icon-btn icon-btn--on-ink" data-act="close" aria-label="Terug naar de lijst">${icon('close')}</button>
+      <button type="button" class="icon-btn" data-act="close" aria-label="Terug naar de lijst">${icon('chevronLeft')}</button>
       <div class="statshead__text"><h1 class="statshead__title">Statistieken</h1><p class="statshead__city">${esc(city.name)}</p></div>
     </header>`;
 
@@ -69,7 +71,6 @@ function render() {
     return;
   }
 
-  // per categorie
   const perCat = state.categories
     .map((c) => {
       const inCat = list.filter((r) => r.categories.includes(c.name));
@@ -77,16 +78,15 @@ function render() {
     })
     .filter((c) => c.total);
 
-  // scores
   const noahScores = list.filter((r) => r.noah_score != null).map((r) => r.noah_score);
   const marieScores = list.filter((r) => r.marie_score != null).map((r) => r.marie_score);
   const shared = list.filter((r) => r.noah_score != null && r.marie_score != null);
-  let verdict = 'Nog geen zaken waar jullie allebei een score gaven.';
+  let verdict = 'Zodra jullie allebei een zaak scoren, zie je hier wie de strengste is.';
   if (shared.length) {
     const diff = avg(shared.map((r) => r.noah_score - r.marie_score));
     const n = shared.length === 1 ? 'Op 1 zaak gaven jullie' : `Op ${shared.length} zaken gaven jullie`;
     if (Math.abs(diff) < 0.05) verdict = `${n} allebei een score, en gemiddeld precies even hoog.`;
-    else verdict = `${n} allebei een score. ${diff < 0 ? 'Noah' : 'Marie'} is strenger: gemiddeld ${formatScore(Math.round(Math.abs(diff) * 10) / 10)} punt lager.`;
+    else verdict = `${n} allebei een score. ${diff < 0 ? 'Noah' : 'Marie'} is strenger: gemiddeld ${round1(Math.abs(diff))} punt lager.`;
   }
 
   const top = list
@@ -99,37 +99,43 @@ function render() {
     .sort((a, b) => lastDate(b).localeCompare(lastDate(a)))
     .slice(0, 5);
 
-  const seg = (cls, n, label) => (n ? `<span class="bar__seg bar__seg--${cls}" style="width:${pct(n, total)}%" title="${esc(label)}: ${n}"></span>` : '');
+  const seg = (cls, n) => (n ? `<span class="progress__seg progress__seg--${cls}" style="width:${pct(n, total)}%"></span>` : '');
+  const scoreTile = (pid, name, scores) => `
+    <div class="tile tile--${pid}">
+      <span class="tile__n">${scores.length ? round1(avg(scores)) : '–'}</span>
+      <span class="tile__label">${name} gemiddeld${scores.length ? `, uit ${scores.length}` : ''}</span>
+    </div>`;
 
   el.innerHTML = `
     <div class="page__scroll" data-scroll>
       ${head}
       <div class="stats">
-        <section class="block">
-          <div class="block__head"><h2 class="block__title">Waar we al waren</h2><span class="block__aside">${total - niet} van ${total}</span></div>
-          <div class="bar" role="img" aria-label="${samen} samen, ${noah} alleen Noah, ${marie} alleen Marie, ${niet} nog niet">
-            ${seg('samen', samen, 'Samen')}${seg('noah', noah, 'Alleen Noah')}${seg('marie', marie, 'Alleen Marie')}${seg('niet', niet, 'Nog niet')}
+        <section class="summary" aria-label="Waar we al waren">
+          <p class="summary__big">${been}<span class="summary__of"> van ${total}</span></p>
+          <p class="summary__text">restaurants in ${esc(city.name)} bezocht door minstens één van jullie</p>
+          <div class="progress" role="img" aria-label="${samen} samen, ${noah} alleen Noah, ${marie} alleen Marie, ${niet} nog niet">
+            ${seg('samen', samen)}${seg('noah', noah)}${seg('marie', marie)}
           </div>
-          <table class="ledger">
-            <tbody>
-              <tr><th scope="row"><span class="pin pin--samen"></span>Samen geweest</th><td>${samen}</td></tr>
-              <tr><th scope="row"><span class="pin pin--noah"></span>Alleen Noah</th><td>${noah}</td></tr>
-              <tr><th scope="row"><span class="pin pin--marie"></span>Alleen Marie</th><td>${marie}</td></tr>
-              <tr><th scope="row"><span class="pin pin--nog_niet"></span>Nog niet geweest</th><td>${niet}</td></tr>
-            </tbody>
-          </table>
-          <p class="note">Noah was in ${zaken(samen + noah)}, Marie in ${zaken(samen + marie)}.</p>
         </section>
+
+        <div class="tiles tiles--3">
+          <div class="tile tile--samen"><span class="tile__n">${samen}</span><span class="tile__label">Samen</span></div>
+          <div class="tile tile--noah"><span class="tile__n">${noah}</span><span class="tile__label">Alleen Noah</span></div>
+          <div class="tile tile--marie"><span class="tile__n">${marie}</span><span class="tile__label">Alleen Marie</span></div>
+        </div>
+        <p class="note">Noah was in ${zaken(samen + noah)}, Marie in ${zaken(samen + marie)}. Nog ${zaken(niet)} te gaan.</p>
 
         <section class="block">
           <div class="block__head"><h2 class="block__title">Per categorie</h2></div>
           <ul class="catstats">
             ${perCat
               .map(
-                (c) => `<li class="catstats__row">
-                  <span class="catstats__name">${categoryIcon(c.name)}${esc(c.name)}</span>
-                  <span class="catstats__bar"><span style="width:${pct(c.visited, c.total)}%"></span></span>
-                  <span class="catstats__n">${c.visited}/${c.total}</span>
+                (c) => `<li class="catstats__row hue-${categoryHue(c.name)}">
+                  <span class="catstats__icon">${categoryIcon(c.name)}</span>
+                  <span class="catstats__main">
+                    <span class="catstats__top"><span class="catstats__name">${esc(c.name)}</span><span class="catstats__n">${c.visited} van ${c.total}</span></span>
+                    <span class="catstats__bar"><span style="width:${pct(c.visited, c.total)}%"></span></span>
+                  </span>
                 </li>`,
               )
               .join('')}
@@ -138,18 +144,13 @@ function render() {
 
         <section class="block">
           <div class="block__head"><h2 class="block__title">Scores</h2></div>
-          <table class="ledger">
-            <tbody>
-              <tr><th scope="row"><span class="pin pin--noah"></span>Noah, gemiddeld</th><td>${noahScores.length ? formatScore(Math.round(avg(noahScores) * 10) / 10) : '–'}<small>${noahScores.length ? ` uit ${noahScores.length}` : ''}</small></td></tr>
-              <tr><th scope="row"><span class="pin pin--marie"></span>Marie, gemiddeld</th><td>${marieScores.length ? formatScore(Math.round(avg(marieScores) * 10) / 10) : '–'}<small>${marieScores.length ? ` uit ${marieScores.length}` : ''}</small></td></tr>
-            </tbody>
-          </table>
+          <div class="tiles tiles--2">${scoreTile('noah', 'Noah', noahScores)}${scoreTile('marie', 'Marie', marieScores)}</div>
           <p class="note">${esc(verdict)}</p>
         </section>
 
         <section class="block">
           <div class="block__head"><h2 class="block__title">Toppers</h2></div>
-          ${top.length ? `<ol class="mini-list">${top.map((r) => miniRow(r, formatScore(r.avg_score))).join('')}</ol>` : '<p class="note">Nog geen scores. Geef na jullie volgende etentje een score en de toppers verschijnen hier.</p>'}
+          ${top.length ? `<ul class="mini-list">${top.map((r) => miniRow(r, `${formatScore(r.avg_score)}`, true)).join('')}</ul>` : '<p class="note">Nog geen scores. Geef na jullie volgende etentje een score en de toppers verschijnen hier.</p>'}
         </section>
 
         <section class="block">
@@ -160,10 +161,11 @@ function render() {
     </div>`;
 }
 
-function miniRow(r, aside) {
+function miniRow(r, aside, isScore = false) {
   return `<li><button type="button" class="mini-row" data-open="${r.id}">
+      ${mediaHtml(r, { cls: 'mini-row__thumb' })}
       <span class="mini-row__main"><span class="mini-row__name">${esc(r.name)}</span><span class="mini-row__kind">${esc(kindLabel(r))}</span></span>
-      <span class="mini-row__aside">${esc(aside)}</span>
-      ${stampsSmall(r)}
+      ${isScore ? `<span class="scorebadge">${esc(aside)}</span>` : `<span class="mini-row__aside">${esc(aside)}</span>`}
+      ${isScore ? '' : stamps(r, 'stamps--sm')}
     </button></li>`;
 }

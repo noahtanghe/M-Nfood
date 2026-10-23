@@ -4,6 +4,7 @@ import { PERSON } from './config.js';
 import { openSheet, confirmDialog } from './sheets.js';
 import { esc, todayISO, toast, errorText, formatDate } from './util.js';
 import { icon } from './icons.js';
+import { personDot } from './ui.js';
 import * as data from './data.js';
 
 export function openVisitSheet(r, { person = null, onSaved } = {}) {
@@ -29,19 +30,19 @@ export function openVisitSheet(r, { person = null, onSaved } = {}) {
     sheet.body.innerHTML = `
       <p class="sheet__lead">${esc(r.name)}</p>
       <div class="who">
+        <button type="button" class="who__opt" data-who="samen">
+          <span class="who__stamps">${personDot('noah')}${personDot('marie')}</span>
+          <span class="who__text"><span class="who__name">Samen</span><span class="who__sub">Allebei een score geven</span></span>
+          ${icon('chevronRight')}
+        </button>
         <button type="button" class="who__opt" data-who="noah">
-          <span class="who__stamps"><span class="stamp stamp--sm stamp--noah is-visited" aria-hidden="true">N</span></span>
+          <span class="who__stamps">${personDot('noah')}</span>
           <span class="who__text"><span class="who__name">Noah</span><span class="who__sub">${esc(subFor('noah'))}</span></span>
           ${icon('chevronRight')}
         </button>
         <button type="button" class="who__opt" data-who="marie">
-          <span class="who__stamps"><span class="stamp stamp--sm stamp--marie is-visited" aria-hidden="true">M</span></span>
+          <span class="who__stamps">${personDot('marie')}</span>
           <span class="who__text"><span class="who__name">Marie</span><span class="who__sub">${esc(subFor('marie'))}</span></span>
-          ${icon('chevronRight')}
-        </button>
-        <button type="button" class="who__opt" data-who="samen">
-          <span class="who__stamps"><span class="stamp stamp--sm stamp--noah is-visited" aria-hidden="true">N</span><span class="stamp stamp--sm stamp--marie is-visited" aria-hidden="true">M</span></span>
-          <span class="who__text"><span class="who__name">Samen</span><span class="who__sub">Allebei een score geven</span></span>
           ${icon('chevronRight')}
         </button>
       </div>`;
@@ -57,7 +58,7 @@ export function openVisitSheet(r, { person = null, onSaved } = {}) {
       .join('');
     return `
       <section class="vp vp--${pid}" data-pid="${pid}">
-        <h3 class="vp__title"><span class="vp__dot" aria-hidden="true"></span>Score van ${p.name}</h3>
+        <h3 class="vp__title">${personDot(pid)}Score van ${p.name}</h3>
         <div class="scale" role="radiogroup" aria-label="Score van ${p.name}">${nums}</div>
         <p class="vp__hint" data-hint>${hintText(f.score)}</p>
         <label class="field">

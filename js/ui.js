@@ -1,13 +1,74 @@
-// Gedeelde stukjes interface: stempels, categoriekeuze, prijskeuze.
+// Gedeelde stukjes interface: foto's met terugval, stempels, categoriekeuze, prijskeuze.
 
-import { PEOPLE, PERSON } from './config.js';
+import { PEOPLE, PERSON, TONES, PHOTO_WIDTH, FUNCTION_URL, SUPABASE_KEY } from './config.js';
 import { esc, cap, formatScore } from './util.js';
-import { icon, categoryIcon } from './icons.js';
+import { icon, categoryIcon, categoryHue } from './icons.js';
 
 const SHORT = { 'Ontbijt & brunch': 'Brunch', 'Tapas & sharing': 'Tapas', 'Café & bar': 'Café' };
 
+/** Korte naam van een categorie, voor tabs en kaarten. */
+export const shortCat = (name) => SHORT[name] || name;
+
 /** Korte omschrijving voor in de lijst: eigen keuken-notitie of de eerste categorie. */
-export const kindLabel = (r) => cap(r.cuisine_note || '') || SHORT[r.categories[0]] || r.categories[0] || '';
+export const kindLabel = (r) => cap(r.cuisine_note || '') || shortCat(r.categories[0] || '');
+
+// ---------- foto's ----------
+
+/** Google-foto's die niet bestaan of niet laden: deze sessie niet opnieuw proberen. */
+export const failedPhotos = new Set();
+/** Foto's die al eens geladen zijn: bij opnieuw tekenen meteen tonen, zonder opnieuw in te faden. */
+const loadedPhotos = new Set();
+
+export const googlePhotoUrl = (placeId) =>
+  `${FUNCTION_URL}?action=photo&place=${encodeURIComponent(placeId)}&w=${PHOTO_WIDTH}&key=${encodeURIComponent(SUPABASE_KEY)}`;
+
+export function toneFor(r) {
+  const s = String(r.id || r.name || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return TONES[h % TONES.length];
+}
+
+/**
+ * Foto van de zaak (via Google) met een gekleurd vlak + categorie-icoon eronder.
+ * Laadt de foto niet, of bestaat ze niet, dan blijft het vlak gewoon staan.
+ */
+export function mediaHtml(r, { cls = '', photo = true, eager = false, extra = '' } = {}) {
+  const placeId = r.google_place_id;
+  const img =
+    photo && placeId && !failedPhotos.has(placeId)
+      ? `<img src="${esc(googlePhotoUrl(placeId))}" alt=""${loadedPhotos.has(placeId) ? ' class="is-loaded"' : ''} ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" crossorigin="anonymous" data-place="${esc(placeId)}">`
+      : '';
+  // zonder foto krijgt het vlak de kleur van de categorie (zelfde tint als de tab bovenaan)
+  const cat = r.categories?.[0] || '';
+  return `<span class="media ${cls}${cat ? ` hue-${categoryHue(cat)}` : ''}" style="--tone:${toneFor(r)}"><span class="media__fallback" aria-hidden="true">${categoryIcon(cat)}</span>${img}${extra}</span>`;
+}
+
+/** Laat foto's zacht verschijnen en ruim mislukte op. Eén keer op document-niveau binden. */
+export function bindMedia(root = document) {
+  root.addEventListener(
+    'load',
+    (e) => {
+      const img = e.target;
+      if (img.tagName !== 'IMG' || !img.parentElement?.classList.contains('media')) return;
+      img.classList.add('is-loaded');
+      if (img.dataset.place) loadedPhotos.add(img.dataset.place);
+    },
+    true,
+  );
+  root.addEventListener(
+    'error',
+    (e) => {
+      const img = e.target;
+      if (img.tagName !== 'IMG' || !img.dataset.place) return;
+      failedPhotos.add(img.dataset.place);
+      img.remove();
+    },
+    true,
+  );
+}
+
+// ---------- stempels ----------
 
 export function stampLabel(r, personId) {
   const name = PERSON[personId].name;
@@ -16,16 +77,27 @@ export function stampLabel(r, personId) {
   return s == null ? `${name}: geweest, nog geen score` : `${name}: score ${formatScore(s)} op 10`;
 }
 
-/** Kleine stempel (lijst, kaartvoorbeeld): score als die er is, anders de initiaal. */
-export function stampSmall(r, personId) {
-  const visited = r[`${personId}_visited`];
+/** Ronde stempel per persoon die er was: initiaal + score (of een vinkje zonder score). */
+export function stamp(r, personId) {
+  if (!r[`${personId}_visited`]) return '';
   const score = r[`${personId}_score`];
-  const inner = visited && score != null ? formatScore(score) : PERSON[personId].initial;
-  const state = visited ? (score != null ? 'is-scored' : 'is-visited') : 'is-empty';
-  return `<span class="stamp stamp--sm stamp--${personId} ${state}" role="img" aria-label="${esc(stampLabel(r, personId))}">${esc(inner)}</span>`;
+  return `<span class="stamp stamp--${personId}" role="img" aria-label="${esc(stampLabel(r, personId))}">
+      <span class="stamp__who" aria-hidden="true">${PERSON[personId].initial}</span>
+      <span class="stamp__val" aria-hidden="true">${score != null ? formatScore(score) : icon('check')}</span>
+    </span>`;
 }
 
-export const stampsSmall = (r) => `<span class="stamps-sm">${PEOPLE.map((p) => stampSmall(r, p.id)).join('')}</span>`;
+/** Stempels van wie er was; leeg als nog niemand geweest is. */
+export function stamps(r, cls = '') {
+  const inner = PEOPLE.map((p) => stamp(r, p.id)).join('');
+  return inner ? `<span class="stamps ${cls}">${inner}</span>` : '';
+}
+
+/** Lege of gevulde stempel voor in keuzelijsten (bijvoorbeeld "wie is er geweest?"). */
+export const personDot = (personId) =>
+  `<span class="stamp stamp--${personId} stamp--plain" aria-hidden="true"><span class="stamp__val">${PERSON[personId].initial}</span></span>`;
+
+// ---------- formulieren ----------
 
 /** Tegels om categorieën te kiezen in formulieren. */
 export function categoryPickerHtml(categories, selectedIds) {
@@ -90,6 +162,3 @@ export function placeResultsHtml(results, existingByPlaceId) {
 }
 
 export const spinner = (label = 'Laden') => `<span class="spinner" role="status" aria-label="${esc(label)}"></span>`;
-
-export const iconButton = (name, label, attrs = '') =>
-  `<button type="button" class="icon-btn" aria-label="${esc(label)}" ${attrs}>${icon(name)}</button>`;

@@ -1,16 +1,36 @@
-// Onderblad met extra filters: prijs, minimale score, nu open.
+// Onderblad met sorteren en extra filters: wie was er, prijs, minimale score, nu open.
 
+import { WHO, SORTS } from './config.js';
 import { state, savePrefs, filtered, clearFilters } from './state.js';
 import { openSheet } from './sheets.js';
+import { esc } from './util.js';
 
 const MIN_SCORES = [0, 6, 7, 8, 9];
 
-export function openFilterSheet({ onChange }) {
-  const sheet = openSheet({ title: 'Filters', className: 'sheet--filters' });
+export function openFilterSheet({ onChange, ensureLocation }) {
+  const sheet = openSheet({ title: 'Sorteren en filteren', className: 'sheet--filters' });
 
   function render() {
     const count = filtered().length;
     sheet.body.innerHTML = `
+      <section class="fgroup">
+        <h3 class="fgroup__title">Sorteer op</h3>
+        <div class="chips" role="radiogroup" aria-label="Sorteer op">
+          ${SORTS.map((o) => {
+            const on = state.sort === o.id;
+            return `<button type="button" class="chipbtn${on ? ' is-on' : ''}" role="radio" aria-checked="${on}" data-sort="${o.id}">${esc(o.label)}</button>`;
+          }).join('')}
+        </div>
+      </section>
+      <section class="fgroup">
+        <h3 class="fgroup__title">Wie was er?</h3>
+        <div class="chips" role="radiogroup" aria-label="Wie was er?">
+          ${WHO.map((w) => {
+            const on = state.who === w.id;
+            return `<button type="button" class="chipbtn${on ? ' is-on' : ''}" role="radio" aria-checked="${on}" data-who="${w.id}">${w.id ? `<span class="chipbtn__dot chipbtn__dot--${w.id}"></span>` : ''}${esc(w.label)}</button>`;
+          }).join('')}
+        </div>
+      </section>
       <section class="fgroup">
         <h3 class="fgroup__title">Prijs</h3>
         <div class="boxes boxes--3" role="group" aria-label="Prijs">
@@ -21,7 +41,7 @@ export function openFilterSheet({ onChange }) {
             })
             .join('')}
         </div>
-        <p class="fgroup__hint">Meerdere kiezen mag. Prijzen zijn een ruwe schatting van Google.</p>
+        <p class="fgroup__hint">Meerdere kiezen mag. De prijs is een ruwe schatting van Google.</p>
       </section>
       <section class="fgroup">
         <h3 class="fgroup__title">Minimale score</h3>
@@ -51,7 +71,24 @@ export function openFilterSheet({ onChange }) {
     render();
   };
 
-  sheet.body.addEventListener('click', (e) => {
+  sheet.body.addEventListener('click', async (e) => {
+    const so = e.target.closest('[data-sort]');
+    if (so) {
+      state.sort = so.dataset.sort;
+      changed();
+      if (state.sort === 'afstand' && ensureLocation) {
+        await ensureLocation();
+        changed();
+      }
+      return;
+    }
+    const w = e.target.closest('[data-who]');
+    if (w) {
+      state.who = w.dataset.who;
+      if (state.who) state.status = 'geweest';
+      changed();
+      return;
+    }
     const p = e.target.closest('[data-price]');
     if (p) {
       const n = Number(p.dataset.price);

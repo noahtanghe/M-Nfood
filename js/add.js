@@ -4,8 +4,8 @@ import { state, cityById } from './state.js';
 import { openSheet } from './sheets.js';
 import { esc, toast, errorText, priceHtml } from './util.js';
 import { icon } from './icons.js';
-import { categoryPickerHtml, bindCategoryPicker, priceChoiceHtml, bindPriceChoice, placeResultsHtml, spinner } from './ui.js';
-import { miniMap, pickerMap } from './mapview.js';
+import { categoryPickerHtml, bindCategoryPicker, priceChoiceHtml, bindPriceChoice, placeResultsHtml, spinner, mediaHtml } from './ui.js';
+import { pickerMap } from './mapview.js';
 import { openState } from './hours.js';
 import * as data from './data.js';
 
@@ -81,11 +81,8 @@ export function mountPlaceSearch(container, { cityId, initialQuery = '', onPick,
 export function openAddSheet({ onAdded, onOpenExisting }) {
   const city = cityById(state.city);
   const sheet = openSheet({ title: `Restaurant toevoegen in ${city.name}`, size: 'tall', className: 'sheet--add' });
-  let mini = null;
   let picker = null;
   const cleanupMaps = () => {
-    mini?.destroy();
-    mini = null;
     picker?.destroy();
     picker = null;
   };
@@ -128,7 +125,7 @@ export function openAddSheet({ onAdded, onOpenExisting }) {
       ${
         place
           ? `<div class="found">
-              <div class="found__map" data-mini></div>
+              ${mediaHtml({ id: place.google_place_id, name: place.name, google_place_id: place.google_place_id, categories: [] }, { cls: 'found__media', eager: true })}
               <div class="found__text">
                 <p class="found__name">${esc(place.name)}</p>
                 <p class="found__addr">${esc(place.address || '')}</p>
@@ -172,13 +169,6 @@ export function openAddSheet({ onAdded, onOpenExisting }) {
     bindPriceChoice(sheet.body.querySelector('[data-price-box]'), () => price, (v) => (price = v));
     sheet.body.querySelector('[data-back]').addEventListener('click', () => stepSearch(place ? '' : manualName));
 
-    if (place && place.lat != null) {
-      setTimeout(() => {
-        const el = sheet.body.querySelector('[data-mini]');
-        if (el) mini = miniMap(el, { lat: place.lat, lng: place.lng, status: 'nog_niet' });
-        setTimeout(() => mini?.invalidate(), 300);
-      }, 30);
-    }
     if (!place) {
       setTimeout(() => {
         const el = sheet.body.querySelector('[data-picker]');

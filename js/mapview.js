@@ -1,7 +1,7 @@
 // Kaarten (Leaflet): de hoofdkaart, de kleine kaart in het detailscherm en de locatiekiezer.
 
 import { TILE_URL, TILE_ATTRIBUTION } from './config.js';
-import { esc, isCoarsePointer } from './util.js';
+import { esc } from './util.js';
 
 const L = window.L;
 
@@ -39,14 +39,15 @@ function coreBounds(pts) {
 let map = null;
 let layer = null;
 let userMarker = null;
-let isFull = false;
 const markers = new Map();
+
+export const mapReady = () => !!map;
 
 export function initMainMap(el, { center, onPinTap, onMapTap }) {
   map = L.map(el, {
     zoomControl: false,
-    scrollWheelZoom: false,
-    dragging: !isCoarsePointer(),
+    scrollWheelZoom: true,
+    dragging: true,
     touchZoom: true,
     doubleClickZoom: true,
     keyboard: false,
@@ -89,7 +90,8 @@ export function fitTo(list, fallbackCenter) {
   } else if (pts.length === 1) {
     map.setView(pts[0], 15.5, { animate: false });
   } else {
-    map.fitBounds(coreBounds(pts), { padding: [22, 22], maxZoom: 15.5, animate: false });
+    // onderaan meer marge: daar zweven de knoppen en het voorbeeldkaartje
+    map.fitBounds(coreBounds(pts), { paddingTopLeft: [28, 56], paddingBottomRight: [28, 96], maxZoom: 15.5, animate: false });
   }
 }
 
@@ -99,18 +101,6 @@ export function panToRestaurant(r) {
   map.setView([r.lat, r.lng], z, { animate: true });
 }
 
-export function setFull(full) {
-  if (!map) return;
-  isFull = full;
-  if (isCoarsePointer()) {
-    if (full) map.dragging.enable();
-    else map.dragging.disable();
-  }
-  setTimeout(() => map.invalidateSize({ animate: false }), 30);
-  setTimeout(() => map.invalidateSize({ animate: false }), 320);
-}
-
-export const mapIsFull = () => isFull;
 export const invalidate = () => map && map.invalidateSize({ animate: false });
 
 export function showUser(pos, { pan = true } = {}) {

@@ -26,6 +26,8 @@ const P = {
   flag: '<path d="M5.5 21V4M5.5 4.5h11l-2 4 2 4h-11"/>',
   refresh: '<path d="M19.5 11A7.5 7.5 0 0 0 6 6.6L4.5 8M4.5 4v4h4M4.5 13A7.5 7.5 0 0 0 18 17.4l1.5-1.4M19.5 20v-4h-4"/>',
   pin: '<path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/>',
+  list: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" stroke-width="2.6"/>',
+  utensils: '<path d="M7 3.5v17M4.5 3.5v5a2.5 2.5 0 0 0 5 0v-5"/><path d="M17 20.5V3.5c-2.2 1.3-3.4 3.9-3.4 7.2v2.6H17"/>',
   // categorieën
   all: '<rect x="4.5" y="4.5" width="6" height="6"/><rect x="13.5" y="4.5" width="6" height="6"/><rect x="4.5" y="13.5" width="6" height="6"/><rect x="13.5" y="13.5" width="6" height="6"/>',
   brunch: '<path d="M5 10h11v3.8a5.2 5.2 0 0 1-5.2 5.2h-.6A5.2 5.2 0 0 1 5 13.8z"/><path d="M16 11.5h1.4a2.3 2.3 0 0 1 0 4.6H15.6"/><path d="M3.5 21h14"/><path d="M8.5 3.8c-.9 1 .9 1.9 0 3.2M12.3 3.8c-.9 1 .9 1.9 0 3.2"/>',
@@ -61,6 +63,34 @@ const CATEGORY_ICON = {
   'Fine dining': 'cloche',
   'Café & bar': 'beer',
 };
+
+// Elke categorie krijgt een tint uit dezelfde aardse familie (zie .hue-* in css/app.css).
+const CATEGORY_HUE = {
+  'Ontbijt & brunch': 'honey',
+  Amerikaans: 'cognac',
+  Aziatisch: 'teal',
+  Fondue: 'honey',
+  Italiaans: 'cognac',
+  Mediterraans: 'olive',
+  Turks: 'plum',
+  Mexicaans: 'honey',
+  'Tapas & sharing': 'cognac',
+  Sushi: 'teal',
+  Vegetarisch: 'forest',
+  Vlaams: 'plum',
+  'Fine dining': 'forest',
+  'Café & bar': 'espresso',
+};
+const HUES = ['honey', 'cognac', 'teal', 'olive', 'plum', 'forest'];
+
+/** Tintnaam voor een categorie; onbekende (zelf toegevoegde) categorieën krijgen een vaste tint op basis van hun naam. */
+export function categoryHue(categoryName) {
+  if (!categoryName) return 'espresso';
+  if (CATEGORY_HUE[categoryName]) return CATEGORY_HUE[categoryName];
+  let h = 0;
+  for (const ch of categoryName) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return HUES[h % HUES.length];
+}
 
 export function icon(name, cls = '') {
   return `<svg class="ico${cls ? ` ${cls}` : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${P[name] || P.dish}</svg>`;

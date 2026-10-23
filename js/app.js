@@ -1,27 +1,29 @@
-// Hoofdscherm, navigatie en het laden/verversen van data.
+// Startpagina, navigatie en het laden/verversen van data.
 
-import { CITIES, STATUSES, SORTS } from './config.js';
+import { CITIES, STATUSES } from './config.js';
 import {
   state, savePrefs, filtered, statusCounts, cityRestaurants, byId, currentCity,
   filterKey, activeFilterCount, normalizeRestaurant, distanceTo,
 } from './state.js';
-import { esc, $, loadLocal, saveLocal, debounce, toast, formatDistance, priceHtml, isCoarsePointer } from './util.js';
-import { icon, categoryIcon, hydrateIcons } from './icons.js';
-import { kindLabel, stampsSmall } from './ui.js';
-import { isOpenNow } from './hours.js';
+import { esc, $, loadLocal, saveLocal, debounce, toast, formatDistance, priceHtml } from './util.js';
+import { icon, categoryIcon, categoryHue, hydrateIcons } from './icons.js';
+import { kindLabel, shortCat, stamps, mediaHtml, bindMedia } from './ui.js';
+import { openState } from './hours.js';
 import * as mapview from './mapview.js';
-import { closeTopLayer, pushLayer, lockScroll, unlockScroll } from './sheets.js';
+import { closeTopLayer, openSheet } from './sheets.js';
 import { initDetail, openDetail, closeDetail, refreshDetail, photosChanged, detailOpenId } from './detail.js';
 import { initStats, openStats, closeStats, refreshStats } from './stats.js';
 import { openFilterSheet } from './filters.js';
 import { openAddSheet } from './add.js';
 import { openSurprise } from './surprise.js';
+import { openSearch } from './search.js';
 import * as data from './data.js';
 
 let lastFitKey = null;
 let catsKey = '';
+let lastCat = null;
 let internalNav = false;
-let releaseFullMap = null;
+let safeTop = 0;
 
 // ---------- navigatie (hash-routes: #/r/<id>, #/stats) ----------
 
@@ -105,13 +107,13 @@ async function reload({ initial = false } = {}) {
 const reloadSoon = debounce(() => reload(), 400);
 
 async function maybeRefreshHours() {
-  const last = loadLocal('mn.hoursRefreshAt', 0);
-  if (Date.now() - last < 6 * 3600e3) return;
-  saveLocal('mn.hoursRefreshAt', Date.now());
+  if (Date.now() < loadLocal('mn.hoursNextTry', 0)) return;
   try {
     const n = await data.refreshHours(state.restaurants);
+    saveLocal('mn.hoursNextTry', Date.now() + 6 * 3600e3);
     if (n) reloadSoon();
   } catch (err) {
+    saveLocal('mn.hoursNextTry', Date.now() + 30 * 60e3);
     console.warn('Openingsuren verversen lukte niet:', err.message || err);
   }
 }
@@ -119,42 +121,32 @@ async function maybeRefreshHours() {
 // ---------- tekenen ----------
 
 function render({ refit = false } = {}) {
-  renderCities();
+  const emptyCity = state.loaded && !cityRestaurants().length;
+  $('#app').classList.toggle('is-empty', emptyCity);
+  if (emptyCity && state.view === 'map') setView('list', { save: false });
+
+  renderTopbar();
   renderCats();
   renderStatus();
-  renderToolbar();
+  renderListHead();
   const list = filtered();
   renderList(list);
-  const emptyCity = state.loaded && !cityRestaurants().length;
-  const card = $('#mapcard');
-  if (card.hidden !== emptyCity) {
-    card.hidden = emptyCity;
-    $('#legend').hidden = emptyCity;
-    if (!emptyCity) {
-      refit = true;
-      setTimeout(() => {
-        mapview.invalidate();
-        mapview.fitTo(filtered(), currentCity().center);
-      }, 30);
+  renderDock();
+
+  if (state.selectedId && !list.some((r) => r.id === state.selectedId)) state.selectedId = null;
+  if (mapview.mapReady()) {
+    mapview.updateMarkers(list, state.selectedId);
+    const key = filterKey();
+    if (state.view === 'map' && (refit || key !== lastFitKey)) {
+      mapview.fitTo(list, currentCity().center);
+      lastFitKey = key;
     }
   }
-  if (state.selectedId && !list.some((r) => r.id === state.selectedId)) state.selectedId = null;
-  mapview.updateMarkers(list, state.selectedId);
-  const key = filterKey();
-  if (refit || key !== lastFitKey) {
-    mapview.fitTo(list, currentCity().center);
-    lastFitKey = key;
-  }
   renderPreview();
-  $('#map-count').textContent = list.length === 1 ? '1 zaak' : `${list.length} zaken`;
 }
 
-function renderCities() {
-  $('#cities').innerHTML = CITIES.map((c) => {
-    const n = state.restaurants.filter((r) => r.city_id === c.id).length;
-    const on = c.id === state.city;
-    return `<button type="button" class="cities__tab${on ? ' is-on' : ''}" aria-pressed="${on}" data-city="${c.id}">${esc(c.name)}<span class="cities__n">${state.loaded ? n : ''}</span></button>`;
-  }).join('');
+function renderTopbar() {
+  $('#city-name').textContent = currentCity().name;
 }
 
 function renderCats() {
@@ -162,125 +154,158 @@ function renderCats() {
   const key = state.categories.map((c) => c.name).join('|');
   if (key !== catsKey) {
     catsKey = key;
-    const items = [{ name: '', label: 'Alles' }, ...state.categories.map((c) => ({ name: c.name, label: c.name }))];
+    const items = [{ name: '', label: 'Alles' }, ...state.categories.map((c) => ({ name: c.name, label: shortCat(c.name) }))];
     track.innerHTML = items
       .map(
-        (c) => `<button type="button" class="cat" data-cat="${esc(c.name)}" aria-pressed="false">
-          <span class="cat__tile">${c.name ? categoryIcon(c.name) : icon('all')}</span>
-          <span class="cat__label">${esc(c.label)}</span></button>`,
+        (c) => `<button type="button" class="tab" data-cat="${esc(c.name)}" aria-pressed="false"${c.label !== c.name && c.name ? ` aria-label="${esc(c.name)}"` : ''}>
+          <span class="tab__icon hue-${categoryHue(c.name)}">${c.name ? categoryIcon(c.name) : icon('all')}</span>
+          <span class="tab__label">${esc(c.label)}</span></button>`,
       )
       .join('');
   }
   const inCity = cityRestaurants();
-  track.querySelectorAll('.cat').forEach((btn) => {
+  let active = null;
+  track.querySelectorAll('.tab').forEach((btn) => {
     const name = btn.dataset.cat;
-    const on = name ? state.cats.has(name) : state.cats.size === 0;
+    const on = name === state.cat;
+    if (on) active = btn;
     btn.classList.toggle('is-on', on);
     btn.setAttribute('aria-pressed', String(on));
     if (name) btn.classList.toggle('is-empty', !inCity.some((r) => r.categories.includes(name)));
   });
+  if (active && lastCat !== state.cat) {
+    const smooth = lastCat !== null;
+    lastCat = state.cat;
+    const left = active.offsetLeft - (track.clientWidth - active.offsetWidth) / 2;
+    track.scrollTo({ left: Math.max(0, left), behavior: smooth ? 'smooth' : 'auto' });
+  }
 }
 
 function renderStatus() {
-  const bar = $('#statusbar');
-  if (!bar.childElementCount) {
-    bar.innerHTML = STATUSES.map(
-      (s) => `<button type="button" class="status" data-status="${s.id}" aria-pressed="false">${esc(s.label)}<span class="status__n"></span></button>`,
-    ).join('');
+  const seg = $('#statusbar');
+  if (!seg.querySelector('.seg__btn')) {
+    seg.innerHTML = `<span class="seg__thumb" aria-hidden="true"></span>${STATUSES.map(
+      (s) => `<button type="button" class="seg__btn" role="radio" aria-checked="false" data-status="${s.id}"><span class="seg__label">${esc(s.label)}</span><span class="seg__n"></span></button>`,
+    ).join('')}`;
   }
   const counts = statusCounts();
-  bar.querySelectorAll('.status').forEach((btn) => {
+  seg.querySelectorAll('.seg__btn').forEach((btn, i) => {
     const on = btn.dataset.status === state.status;
+    if (on) seg.style.setProperty('--i', i);
     btn.classList.toggle('is-on', on);
-    btn.setAttribute('aria-pressed', String(on));
-    btn.querySelector('.status__n').textContent = state.loaded ? counts[btn.dataset.status] : '';
+    btn.setAttribute('aria-checked', String(on));
+    btn.querySelector('.seg__n').textContent = state.loaded ? counts[btn.dataset.status] : '';
   });
-}
 
-function renderToolbar() {
   const n = activeFilterCount();
   const badge = $('#filter-count');
   badge.hidden = !n;
   badge.textContent = n || '';
   $('#btn-filters').classList.toggle('is-active', !!n);
-  $('#result-count').textContent = state.loaded ? resultText() : '';
-  const sel = $('#sort');
-  if (sel.value !== state.sort) sel.value = state.sort;
+  $('#btn-filters').setAttribute('aria-label', n ? `Filters, ${n} actief` : 'Filters');
 }
 
-function resultText() {
+function renderListHead() {
+  // Alleen voor schermlezers: de zichtbare tellers staan in de statusknoppen.
   const n = filtered().length;
-  const total = cityRestaurants().length;
-  const base = n === 1 ? '1 zaak' : `${n} zaken`;
-  return n === total ? base : `${base} van ${total}`;
+  $('#result-count').textContent = state.loaded ? (n === 1 ? '1 zaak' : `${n} zaken`) : '';
 }
 
-function rowHtml(r) {
+function cardHtml(r, i) {
   const d = distanceTo(r);
-  const open = isOpenNow(r.opening_hours);
-  const tag = r.needs_review
-    ? '<span class="row__tag row__tag--review">nakijken</span>'
-    : open === true
-      ? '<span class="row__tag row__tag--open">open</span>'
-      : '';
-  return `<li><button type="button" class="row" data-id="${r.id}">
-      <span class="row__main">
-        <span class="row__name">${esc(r.name)}</span>
-        <span class="row__meta">
-          <span class="row__kind">${esc(kindLabel(r))}</span>
-          <span class="row__price">${priceHtml(r.price_level)}</span>
-          <span class="row__dist">${d != null ? formatDistance(d) : ''}</span>
-          ${tag}
-        </span>
+  const os = openState(r.opening_hours);
+  const flags = [
+    r.needs_review ? '<span class="flag flag--review">Nakijken</span>' : '',
+    os.closedForGood ? '<span class="flag flag--closed">Dicht</span>' : '',
+  ].join('');
+  const extra = [
+    os.open ? `<span class="card__open">${esc(os.short)}</span>` : '',
+    d != null ? `<span class="card__dist">${formatDistance(d)}</span>` : '',
+  ].join('');
+  return `<li><button type="button" class="card" data-id="${r.id}">
+      ${mediaHtml(r, {
+        cls: 'card__media',
+        eager: i < 4,
+        extra: `${flags ? `<span class="card__flags">${flags}</span>` : ''}${stamps(r, 'card__stamps')}`,
+      })}
+      <span class="card__body">
+        <span class="card__title">${esc(r.name)}</span>
+        <span class="card__meta"><span class="card__kind">${esc(kindLabel(r))}</span>${priceHtml(r.price_level)}</span>
+        ${extra ? `<span class="card__extra">${extra}</span>` : ''}
       </span>
-      ${stampsSmall(r)}
     </button></li>`;
 }
+
+const skeleton = () =>
+  Array.from(
+    { length: 6 },
+    () => `<li><div class="card card--skeleton" aria-hidden="true"><span class="media card__media"></span>
+      <span class="card__body"><span class="sk sk--title"></span><span class="sk sk--meta"></span></span></div></li>`,
+  ).join('');
 
 function renderList(list) {
   const ul = $('#list');
   const empty = $('#empty');
-  ul.classList.toggle('has-dist', !!state.userPos);
   if (!state.loaded) {
-    ul.innerHTML = '';
-    empty.hidden = false;
-    empty.innerHTML = state.loadError
-      ? `<p>De lijst kon niet geladen worden. Controleer je verbinding.</p><button type="button" class="btn btn--ink" data-retry>Opnieuw proberen</button>`
-      : `<p>Lijst laden…</p>`;
+    if (state.loadError) {
+      ul.innerHTML = '';
+      empty.hidden = false;
+      empty.innerHTML = emptyHtml('De lijst kon niet geladen worden', 'Controleer je verbinding en probeer opnieuw.', '<button type="button" class="btn btn--ink" data-retry>Opnieuw proberen</button>');
+    } else {
+      empty.hidden = true;
+      ul.innerHTML = skeleton();
+    }
     return;
   }
   if (!cityRestaurants().length) {
     ul.innerHTML = '';
     empty.hidden = false;
-    empty.innerHTML = `<p>Nog geen restaurants in ${esc(currentCity().name)}. Voeg het eerste toe en het verschijnt meteen op de kaart.</p>
-      <button type="button" class="btn btn--ink" data-add>${icon('plus')}Restaurant toevoegen</button>`;
+    empty.innerHTML = emptyHtml(
+      `Nog geen restaurants in ${currentCity().name}`,
+      'Voeg het eerste toe. Het verschijnt meteen in de lijst en op de kaart.',
+      `<button type="button" class="btn btn--ink" data-add>${icon('plus')}Restaurant toevoegen</button>`,
+    );
     return;
   }
   if (!list.length) {
     ul.innerHTML = '';
     empty.hidden = false;
-    empty.innerHTML = `<p>Geen zaken die bij deze keuze passen.</p><button type="button" class="btn btn--ghost" data-reset>Alles tonen</button>`;
+    empty.innerHTML = emptyHtml('Geen zaken voor deze keuze', 'Kies een andere categorie of wis de filters.', '<button type="button" class="btn btn--ghost" data-reset>Alles tonen</button>');
     return;
   }
   empty.hidden = true;
-  ul.innerHTML = list.map(rowHtml).join('');
+  ul.innerHTML = list.map(cardHtml).join('');
+}
+
+const emptyHtml = (title, text, action) => `
+  <span class="empty__icon">${icon('utensils')}</span>
+  <h2 class="empty__title">${esc(title)}</h2>
+  <p class="empty__text">${esc(text)}</p>
+  ${action}`;
+
+function renderDock() {
+  const map = state.view === 'map';
+  $('#view-icon').innerHTML = icon(map ? 'list' : 'map');
+  $('#view-label').textContent = map ? 'Lijst' : 'Kaart';
 }
 
 function renderPreview() {
   const box = $('#map-preview');
-  const r = state.selectedId ? byId(state.selectedId) : null;
+  const r = state.view === 'map' && state.selectedId ? byId(state.selectedId) : null;
   if (!r) {
     box.hidden = true;
     box.innerHTML = '';
     return;
   }
+  const os = openState(r.opening_hours);
   box.hidden = false;
   box.innerHTML = `<button type="button" class="preview" data-open="${r.id}">
+      ${mediaHtml(r, { cls: 'preview__thumb' })}
       <span class="preview__main">
         <span class="preview__name">${esc(r.name)}</span>
-        <span class="preview__meta"><span>${esc(kindLabel(r))}</span>${priceHtml(r.price_level)}</span>
+        <span class="preview__meta"><span>${esc(kindLabel(r))}</span>${priceHtml(r.price_level)}${os.open ? `<span class="card__open">${esc(os.short)}</span>` : ''}</span>
       </span>
-      ${stampsSmall(r)}
+      ${stamps(r, 'stamps--sm')}
       <span class="preview__go">${icon('chevronRight')}</span>
     </button>`;
 }
@@ -296,25 +321,55 @@ function renderBanner() {
   }
 }
 
-// ---------- kaart ----------
+// ---------- weergave: lijst of kaart ----------
 
-function openFullMap() {
-  if (releaseFullMap) return;
-  $('#mapcard').classList.add('is-full');
-  mapview.setFull(true);
-  lockScroll();
-  releaseFullMap = pushLayer(closeFullMap);
-  setTimeout(() => mapview.fitTo(filtered(), currentCity().center), 340);
+function updateMapTop() {
+  const bottom = Math.round($('#sticky').getBoundingClientRect().bottom);
+  document.documentElement.style.setProperty('--map-top', `${bottom}px`);
 }
 
-function closeFullMap() {
-  if (!releaseFullMap) return;
-  releaseFullMap();
-  releaseFullMap = null;
-  $('#mapcard').classList.remove('is-full');
-  mapview.setFull(false);
-  unlockScroll();
-  setTimeout(() => mapview.fitTo(filtered(), currentCity().center), 340);
+function ensureMap() {
+  if (mapview.mapReady()) return;
+  mapview.initMainMap($('#map'), {
+    center: currentCity().center,
+    onPinTap: (id) => {
+      state.selectedId = id;
+      mapview.updateMarkers(filtered(), id);
+      renderPreview();
+    },
+    onMapTap: () => {
+      if (!state.selectedId) return;
+      state.selectedId = null;
+      mapview.updateMarkers(filtered(), null);
+      renderPreview();
+    },
+  });
+  if (state.userPos) mapview.showUser(state.userPos, { pan: false });
+}
+
+function setView(view, { save = true } = {}) {
+  if (view === 'map' && state.loaded && !cityRestaurants().length) view = 'list';
+  state.view = view;
+  if (save) savePrefs();
+  const app = $('#app');
+  if (view === 'map') {
+    window.scrollTo(0, 0);
+    app.classList.add('is-map');
+    updateMapTop();
+    ensureMap();
+    requestAnimationFrame(() => {
+      mapview.invalidate();
+      const list = filtered();
+      mapview.updateMarkers(list, state.selectedId);
+      mapview.fitTo(list, currentCity().center);
+      lastFitKey = filterKey();
+    });
+  } else {
+    app.classList.remove('is-map');
+    state.selectedId = null;
+  }
+  renderDock();
+  renderPreview();
 }
 
 function locate({ pan = true, silent = false } = {}) {
@@ -340,16 +395,44 @@ function locate({ pan = true, silent = false } = {}) {
   });
 }
 
-// ---------- events ----------
+// ---------- acties ----------
+
+function setCity(id) {
+  if (id === state.city) return;
+  state.city = id;
+  state.cat = '';
+  state.selectedId = null;
+  savePrefs();
+  window.scrollTo(0, 0);
+  render({ refit: true });
+}
+
+function openCitySheet() {
+  const sheet = openSheet({ title: 'Kies een stad', className: 'sheet--city' });
+  sheet.body.innerHTML = `<div class="cityopts">${CITIES.map((c) => {
+    const n = state.restaurants.filter((r) => r.city_id === c.id).length;
+    const on = c.id === state.city;
+    return `<button type="button" class="cityopt${on ? ' is-on' : ''}" data-city="${c.id}" aria-pressed="${on}">
+        <span class="cityopt__name">${esc(c.name)}</span>
+        <span class="cityopt__n">${n === 1 ? '1 restaurant' : `${n} restaurants`}</span>
+        <span class="cityopt__check">${on ? icon('check') : ''}</span>
+      </button>`;
+  }).join('')}</div>`;
+  sheet.body.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-city]');
+    if (!b) return;
+    sheet.close();
+    setCity(b.dataset.city);
+  });
+}
 
 function resetSelection() {
-  state.cats.clear();
+  state.cat = '';
   state.status = 'alle';
-  state.search = '';
+  state.who = '';
   state.prices.clear();
   state.minScore = 0;
   state.openNow = false;
-  $('#search').value = '';
   savePrefs();
   render();
 }
@@ -364,23 +447,30 @@ function addRestaurant() {
   });
 }
 
-function bind() {
-  $('#cities').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-city]');
-    if (!b || b.dataset.city === state.city) return;
-    state.city = b.dataset.city;
-    state.selectedId = null;
-    savePrefs();
-    render({ refit: true });
+function measureSafeTop() {
+  safeTop = $('#shield').offsetHeight;
+}
+
+let scrollRaf = 0;
+function onScroll() {
+  if (scrollRaf) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0;
+    const sticky = $('#sticky');
+    const stuck = window.scrollY > 4 && sticky.getBoundingClientRect().top <= safeTop + 0.5;
+    sticky.classList.toggle('is-stuck', stuck);
   });
+}
+
+function bind() {
+  $('#btn-city').addEventListener('click', openCitySheet);
+  $('#btn-search').addEventListener('click', () => openSearch({ onOpen: openRestaurant }));
+  $('#btn-stats').addEventListener('click', () => go('#/stats'));
 
   $('#cats').addEventListener('click', (e) => {
     const b = e.target.closest('[data-cat]');
     if (!b) return;
-    const name = b.dataset.cat;
-    if (!name) state.cats.clear();
-    else if (state.cats.has(name)) state.cats.delete(name);
-    else state.cats.add(name);
+    state.cat = b.dataset.cat;
     savePrefs();
     render();
   });
@@ -389,34 +479,25 @@ function bind() {
     const b = e.target.closest('[data-status]');
     if (!b) return;
     state.status = b.dataset.status;
+    if (state.status !== 'geweest') state.who = '';
     savePrefs();
     render();
   });
 
-  const onSearch = debounce(() => render(), 120);
-  $('#search').addEventListener('input', (e) => {
-    state.search = e.target.value;
-    onSearch();
-  });
-
-  $('#btn-filters').addEventListener('click', () => openFilterSheet({ onChange: () => render() }));
+  $('#btn-filters').addEventListener('click', () =>
+    openFilterSheet({
+      onChange: () => render(),
+      ensureLocation: () => (state.userPos ? Promise.resolve(true) : locate({ pan: false })),
+    }),
+  );
+  $('#btn-view').addEventListener('click', () => setView(state.view === 'map' ? 'list' : 'map'));
   $('#btn-surprise').addEventListener('click', () => openSurprise({ list: filtered(), onOpen: openRestaurant }));
   $('#btn-add').addEventListener('click', addRestaurant);
-  $('#btn-stats').addEventListener('click', () => go('#/stats'));
-  $('#btn-map-full').addEventListener('click', openFullMap);
-  $('#btn-map-close').addEventListener('click', closeFullMap);
   $('#btn-locate').addEventListener('click', () => locate({ pan: true }));
 
-  $('#sort').addEventListener('change', async (e) => {
-    state.sort = e.target.value;
-    savePrefs();
-    if (state.sort === 'afstand' && !state.userPos) await locate({ pan: false });
-    render();
-  });
-
   $('#list').addEventListener('click', (e) => {
-    const row = e.target.closest('[data-id]');
-    if (row) openRestaurant(row.dataset.id);
+    const card = e.target.closest('[data-id]');
+    if (card) openRestaurant(card.dataset.id);
   });
   $('#map-preview').addEventListener('click', (e) => {
     const b = e.target.closest('[data-open]');
@@ -441,7 +522,17 @@ function bind() {
     if (document.visibilityState === 'visible') reloadSoon();
   });
   window.addEventListener('hashchange', route);
-  window.addEventListener('resize', debounce(() => mapview.invalidate(), 150));
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener(
+    'resize',
+    debounce(() => {
+      measureSafeTop();
+      if (state.view === 'map') {
+        updateMapTop();
+        mapview.invalidate();
+      }
+    }, 150),
+  );
 }
 
 function onRealtime(table, payload) {
@@ -459,43 +550,21 @@ function registerServiceWorker() {
 
 export async function start() {
   hydrateIcons();
-  $('#btn-stats').innerHTML = icon('chart');
-  $('#search-icon').innerHTML = icon('search');
-  $('#btn-map-full').innerHTML = icon('expand');
-  $('#btn-locate').innerHTML = icon('locate');
-  $('#btn-map-close').innerHTML = icon('close');
-  $('#sort').innerHTML = SORTS.map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
-  $('#sort').value = state.sort;
+  bindMedia(document);
+  measureSafeTop();
 
   initDetail({ close: goBack, reload: () => reload(), openRestaurant });
   initStats({ close: goBack, openRestaurant });
-
-  mapview.initMainMap($('#map'), {
-    center: currentCity().center,
-    onPinTap: (id) => {
-      state.selectedId = id;
-      mapview.updateMarkers(filtered(), id);
-      renderPreview();
-    },
-    onMapTap: () => {
-      if (state.selectedId) {
-        state.selectedId = null;
-        mapview.updateMarkers(filtered(), null);
-        renderPreview();
-      } else if (isCoarsePointer() && !mapview.mapIsFull()) {
-        openFullMap();
-      }
-    },
-  });
-
   bind();
 
   const cached = loadLocal('mn.cache');
   if (cached?.restaurants) applyData(cached);
   render({ refit: true });
+  if (state.view === 'map' && state.loaded) setView('map', { save: false });
   if (location.hash) route();
 
   await reload({ initial: true });
+  if (state.view === 'map' && !$('#app').classList.contains('is-map')) setView('map', { save: false });
   if (location.hash) route();
 
   data.subscribe(onRealtime);

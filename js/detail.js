@@ -3,10 +3,11 @@
 import { PEOPLE, PERSON } from './config.js';
 import { byId, distanceTo } from './state.js';
 import { esc, formatScore, formatDate, priceHtml, formatDistance, toast, errorText } from './util.js';
-import { icon, categoryIcon } from './icons.js';
+import { icon, categoryIcon, categoryHue } from './icons.js';
 import { openState, weekRows, todayIndex } from './hours.js';
 import { miniMap } from './mapview.js';
 import { lockScroll, unlockScroll, openOverlay, confirmDialog } from './sheets.js';
+import { mediaHtml, failedPhotos } from './ui.js';
 import { openVisitSheet } from './visit.js';
 import { openEditSheet } from './edit.js';
 import * as data from './data.js';
@@ -16,6 +17,7 @@ const page = () => document.getElementById('detail');
 let nav = { close: () => {}, reload: async () => {}, openRestaurant: () => {} };
 let currentId = null;
 let mini = null;
+let heroKey = '';
 let photos = [];
 let photosFor = null;
 let weekOpen = false;
@@ -67,7 +69,7 @@ export function closeDetail() {
   }, 300);
 }
 
-/** Na nieuwe data: hertekenen zonder de kaart opnieuw op te bouwen. */
+/** Na nieuwe data: hertekenen zonder de kaart en de foto opnieuw op te bouwen. */
 export function refreshDetail() {
   if (!currentId) return;
   const r = byId(currentId);
@@ -75,6 +77,7 @@ export function refreshDetail() {
     nav.close();
     return;
   }
+  renderHero(r);
   renderBody(r);
   mini?.update(r);
 }
@@ -85,27 +88,33 @@ export function photosChanged(restaurantId) {
 
 // ---------- tekenen ----------
 
+const part = (name) => page().querySelector(`[data-part="${name}"]`);
+
 function renderFrame(r) {
   mini?.destroy();
   mini = null;
+  heroKey = '';
   page().innerHTML = `
     <div class="page__scroll" data-scroll>
-      <div class="hero">
-        <div class="hero__map" data-hero-map></div>
-        <div class="hero__bar">
-          <button type="button" class="icon-btn icon-btn--float" data-act="close" aria-label="Terug naar de lijst">${icon('close')}</button>
-          <span class="hero__spacer"></span>
-          <button type="button" class="icon-btn icon-btn--float" data-act="share" aria-label="Delen">${icon('share')}</button>
-          <button type="button" class="icon-btn icon-btn--float" data-act="edit" aria-label="Bewerken">${icon('pencil')}</button>
-        </div>
-      </div>
-      <article class="detail" data-body></article>
+      <div class="hero" data-hero></div>
+      <article class="detail">
+        <div data-part="top"></div>
+        <div data-part="visits"></div>
+        <div data-part="hours"></div>
+        <section class="block" data-part="location-block">
+          <div class="block__head"><h2 class="block__title">Locatie</h2></div>
+          <div class="locmap"><div class="locmap__map" data-locmap></div><a class="locmap__link" data-route-link target="_blank" rel="noopener" aria-label="Route openen in Kaarten"></a></div>
+          <p class="locmap__addr" data-part="location"></p>
+        </section>
+        <div data-part="photos"></div>
+      </article>
     </div>
     <div class="bottombar bottombar--page"><button type="button" class="bottombar__btn" data-act="visit"></button></div>`;
+  renderHero(r);
   renderBody(r);
   if (r.lat != null && r.lng != null) {
     setTimeout(() => {
-      const el = page().querySelector('[data-hero-map]');
+      const el = page().querySelector('[data-locmap]');
       if (!el || currentId !== r.id) return;
       mini = miniMap(el, r);
       setTimeout(() => mini?.invalidate(), 320);
@@ -113,30 +122,57 @@ function renderFrame(r) {
   }
 }
 
+function renderHero(r) {
+  const key = `${r.id}|${r.google_place_id || ''}|${r.categories[0] || ''}`;
+  if (key === heroKey) return;
+  heroKey = key;
+  const fromGoogle = r.google_place_id && !failedPhotos.has(r.google_place_id);
+  page().querySelector('[data-hero]').innerHTML = `
+    ${mediaHtml(r, { cls: 'hero__media', eager: true })}
+    <div class="hero__bar">
+      <button type="button" class="icon-btn icon-btn--float" data-act="close" aria-label="Terug naar de lijst">${icon('chevronLeft')}</button>
+      <span class="hero__spacer"></span>
+      <button type="button" class="icon-btn icon-btn--float" data-act="share" aria-label="Delen">${icon('share')}</button>
+      <button type="button" class="icon-btn icon-btn--float" data-act="edit" aria-label="Bewerken">${icon('pencil')}</button>
+    </div>
+    ${fromGoogle ? '<p class="hero__credit">Foto via Google</p>' : ''}`;
+}
+
 function renderBody(r) {
-  const body = page().querySelector('[data-body]');
-  if (!body) return;
+  if (!part('top')) return;
   const os = openState(r.opening_hours);
   const dist = distanceTo(r);
-  body.innerHTML = `
-    <p class="detail__cats">${r.categories.map((c) => `<span class="detail__cat">${categoryIcon(c)}${esc(c)}</span>`).join('') || '<span class="detail__cat">Geen categorie</span>'}</p>
+  part('top').innerHTML = `
+    <p class="detail__cats">${r.categories.map((c) => `<span class="chip hue-${categoryHue(c)}">${categoryIcon(c)}${esc(c)}</span>`).join('') || '<span class="chip">Geen categorie</span>'}</p>
     <h1 class="detail__name">${esc(r.name)}</h1>
     ${r.cuisine_note ? `<p class="detail__kind">${esc(r.cuisine_note)}</p>` : ''}
-    ${r.address ? `<p class="detail__addr">${esc(r.address)}</p>` : ''}
     <dl class="facts">
       <div class="facts__cell"><dt>Prijs</dt><dd>${priceHtml(r.price_level, { empty: 'Onbekend' })}</dd></div>
       <div class="facts__cell"><dt>Nu</dt><dd class="${os.open ? 'open-now' : ''}">${os.known ? esc(os.short) : 'Geen uren'}${os.next ? `<small>${esc(os.next)}</small>` : ''}</dd></div>
       ${dist != null ? `<div class="facts__cell"><dt>Afstand</dt><dd>${formatDistance(dist)}</dd></div>` : ''}
     </dl>
     ${actionsHtml(r)}
-    ${reviewHtml(r)}
-    <section class="visits" aria-label="Onze bezoeken">
+    ${reviewHtml(r)}`;
+
+  part('visits').innerHTML = `
+    <section class="block visits" aria-label="Onze scores">
+      <div class="block__head"><h2 class="block__title">Onze scores</h2>${
+        r.noah_score != null && r.marie_score != null ? `<span class="block__aside">Samen ${formatScore(r.avg_score)} op 10</span>` : ''
+      }</div>
       <div class="visits__stamps">${PEOPLE.map((p) => bigStamp(r, p.id)).join('')}</div>
-      ${r.noah_score != null && r.marie_score != null ? `<p class="visits__avg">Samen gemiddeld <strong>${formatScore(r.avg_score)}</strong> op 10</p>` : ''}
-    </section>
-    ${hoursHtml(r, os)}
-    ${photosHtml()}`;
+    </section>`;
+
+  part('hours').innerHTML = hoursHtml(r, os);
+
+  const locBlock = part('location-block');
+  locBlock.hidden = r.lat == null || r.lng == null;
+  part('location').textContent = r.address || 'Geen adres bekend';
+  const link = page().querySelector('[data-route-link]');
+  if (link && r.lat != null) link.href = `https://maps.apple.com/?daddr=${r.lat},${r.lng}&q=${encodeURIComponent(r.name)}`;
+
+  part('photos').innerHTML = photosHtml();
   landing = [];
+
   const btn = page().querySelector('[data-act="visit"]');
   if (btn) {
     const both = r.noah_visited && r.marie_visited;
@@ -147,13 +183,13 @@ function renderBody(r) {
 function actionsHtml(r) {
   const items = [];
   if (r.lat != null) {
-    items.push(`<a class="action" href="https://maps.apple.com/?daddr=${r.lat},${r.lng}&q=${encodeURIComponent(r.name)}" target="_blank" rel="noopener">${icon('route')}<span>Route</span></a>`);
+    items.push(`<a class="action" href="https://maps.apple.com/?daddr=${r.lat},${r.lng}&q=${encodeURIComponent(r.name)}" target="_blank" rel="noopener"><span class="action__icon">${icon('route')}</span><span>Route</span></a>`);
   }
   const g = r.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${r.name} ${r.address || ''}`)}`;
-  items.push(`<a class="action" href="${esc(g)}" target="_blank" rel="noopener">${icon('map')}<span>Google Maps</span></a>`);
-  if (r.website) items.push(`<a class="action" href="${esc(r.website)}" target="_blank" rel="noopener">${icon('globe')}<span>Website</span></a>`);
-  if (r.phone) items.push(`<a class="action" href="tel:${esc(r.phone.replace(/\s+/g, ''))}">${icon('phone')}<span>Bellen</span></a>`);
-  return `<nav class="actions actions--${items.length}" aria-label="Snel naar">${items.join('')}</nav>`;
+  items.push(`<a class="action" href="${esc(g)}" target="_blank" rel="noopener"><span class="action__icon">${icon('map')}</span><span>Google Maps</span></a>`);
+  if (r.website) items.push(`<a class="action" href="${esc(r.website)}" target="_blank" rel="noopener"><span class="action__icon">${icon('globe')}</span><span>Website</span></a>`);
+  if (r.phone) items.push(`<a class="action" href="tel:${esc(r.phone.replace(/\s+/g, ''))}"><span class="action__icon">${icon('phone')}</span><span>Bellen</span></a>`);
+  return `<nav class="actions" aria-label="Snel naar">${items.join('')}</nav>`;
 }
 
 function reviewHtml(r) {
@@ -164,12 +200,12 @@ function reviewHtml(r) {
       ? 'Niet gevonden in Google, dus de locatie is een schatting.'
       : 'Klopt de gekoppelde vestiging?';
   return `<div class="notice" role="note">
-      ${icon('flag')}
+      <span class="notice__icon">${icon('flag')}</span>
       <div class="notice__body">
         <p class="notice__text"><strong>Nog na te kijken.</strong> ${esc(why)}</p>
         <div class="notice__actions">
-          <button type="button" class="btn btn--ghost btn--sm" data-act="review-ok">${icon('check')}Klopt</button>
-          <button type="button" class="btn btn--ghost btn--sm" data-act="edit">${icon('pencil')}Aanpassen</button>
+          <button type="button" class="btn btn--white btn--sm" data-act="review-ok">${icon('check')}Klopt</button>
+          <button type="button" class="btn btn--white btn--sm" data-act="edit">${icon('pencil')}Aanpassen</button>
         </div>
       </div>
     </div>`;
@@ -185,7 +221,7 @@ function bigStamp(r, pid) {
   let seal;
   let label;
   if (!visited) {
-    seal = `<span class="bigstamp__none">nog niet</span>`;
+    seal = `<span class="bigstamp__none">${icon('plus')}</span>`;
     label = `${p.name} was er nog niet. Tik om een bezoek toe te voegen.`;
   } else if (score != null) {
     seal = `<span class="bigstamp__score">${formatScore(score)}</span><span class="bigstamp__of">op 10</span>`;
@@ -198,7 +234,7 @@ function bigStamp(r, pid) {
     <div class="bigstamp bigstamp--${pid} ${visited ? 'is-visited' : 'is-empty'}">
       <button type="button" class="bigstamp__seal${land}" data-act="stamp" data-pid="${pid}" aria-label="${esc(label)}">${seal}</button>
       <p class="bigstamp__name">${p.name}</p>
-      <p class="bigstamp__meta">${visited ? (date ? esc(formatDate(date)) : 'Geweest') : 'Tik om toe te voegen'}</p>
+      <p class="bigstamp__meta">${visited ? (date ? esc(formatDate(date)) : 'Geweest') : 'Nog niet geweest'}</p>
       ${comment ? `<p class="bigstamp__comment">${esc(comment)}</p>` : ''}
     </div>`;
 }
@@ -238,7 +274,7 @@ function hoursHtml(r, os) {
 function photosHtml() {
   const busy = uploading ? `<span class="block__aside">${esc(uploading)}</span>` : photos.length ? `<span class="block__aside">${photos.length}</span>` : '';
   return `<section class="block">
-      <div class="block__head"><h2 class="block__title">Foto's</h2>${busy}</div>
+      <div class="block__head"><h2 class="block__title">Onze foto's</h2>${busy}</div>
       <div class="photos">
         <label class="photos__add">
           ${icon('camera')}<span>Foto toevoegen</span>
@@ -251,7 +287,7 @@ function photosHtml() {
           )
           .join('')}
       </div>
-      ${photos.length ? '' : '<p class="note">Nog geen foto\'s. Maak er een tijdens jullie volgende bezoek.</p>'}
+      ${photos.length ? '' : '<p class="note">Nog geen eigen foto\'s. Maak er een tijdens jullie volgende bezoek.</p>'}
     </section>`;
 }
 
@@ -262,8 +298,7 @@ async function loadPhotos(id, { force = false } = {}) {
     const list = await data.listPhotos(id);
     if (currentId !== id) return;
     photos = list;
-    const r = byId(id);
-    if (r) renderBody(r);
+    if (part('photos')) part('photos').innerHTML = photosHtml();
   } catch {
     /* foto's zijn bijzaak; de rest van het scherm werkt gewoon */
   }
@@ -301,7 +336,7 @@ async function onClick(e) {
       break;
     case 'week':
       weekOpen = !weekOpen;
-      renderBody(r);
+      part('hours').innerHTML = hoursHtml(r, openState(r.opening_hours));
       break;
     case 'load-hours':
       btn.disabled = true;
@@ -346,7 +381,7 @@ async function onChange(e) {
   try {
     for (const f of files) {
       uploading = files.length > 1 ? `Uploaden ${done + 1}/${files.length}…` : 'Uploaden…';
-      if (currentId === id) renderBody(byId(id));
+      if (currentId === id && part('photos')) part('photos').innerHTML = photosHtml();
       await data.uploadPhoto(id, f);
       done += 1;
     }
@@ -417,7 +452,7 @@ function openPhotoViewer(start) {
         await data.deletePhoto(photos[i]);
         photos.splice(i, 1);
         toast('Foto verwijderd');
-        if (currentId) renderBody(byId(currentId));
+        if (currentId && part('photos')) part('photos').innerHTML = photosHtml();
         show();
       } catch (err) {
         toast(`Verwijderen lukte niet: ${errorText(err)}`);
