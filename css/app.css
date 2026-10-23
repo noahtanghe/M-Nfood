@@ -142,6 +142,7 @@ img { display: block; max-width: 100%; }
 .tabs {
   display: flex;
   gap: 2px;
+  min-height: 86px;
   padding: 8px 10px 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -177,6 +178,7 @@ img { display: block; max-width: 100%; }
   --i: 0;
   position: relative;
   flex: 1;
+  min-height: 42px;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   padding: 3px;
