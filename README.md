@@ -2,7 +2,7 @@
 
 Onze restaurantlijst voor Gent (en straks Kortrijk): waar we al waren, wie er was, welke score we gaven en waar we nog naartoe willen.
 
-**App:** https://noahtanghe.github.io/M-Nfood/
+**App:** https://mnfoods.netlify.app/ (Netlify zet elke push naar `main` automatisch online)
 
 ## Op je gsm zetten (iPhone)
 
@@ -38,7 +38,7 @@ Onze restaurantlijst voor Gent (en straks Kortrijk): waar we al waren, wie er wa
 
 ## Een nieuwe versie uitbrengen
 
-Pas de bestanden aan, verhoog `VERSION` bovenaan `sw.js` en push naar `main`. GitHub Pages zet de nieuwe versie binnen een minuut online; de app haalt ze op zodra je ze opent met bereik.
+Pas de bestanden aan, verhoog `VERSION` bovenaan `sw.js` en push naar `main`. Netlify zet de nieuwe versie binnen een minuut online; de app haalt ze op zodra je ze opent met bereik.
 
 ## Kortrijk toevoegen
 
